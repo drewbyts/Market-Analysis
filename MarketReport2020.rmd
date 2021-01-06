@@ -1,0 +1,181 @@
+---
+title: "Market Assessment: 2020"
+description: Market Analysis via ETFs | As of December 31, 2020
+author:
+  - name: Andrew Ramirez 
+    url: https://github.com/ascott24
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(quantmod)
+library(tidyquant)
+library(xts)
+library(rvest)
+library(lubridate)
+library(plotly)
+library(PerformanceAnalytics)
+library(gt)
+library(paletteer)
+library(htmltools)
+library(janitor)
+library(scales)
+library(lubridate)
+library(reactable)
+library(corrplot)
+library(corrr)
+library(hrbrthemes)
+library(ggcorrplot)
+library(ggsci)
+```
+
+
+```{r}
+start <- as.Date("2020-01-01")
+end <- as.Date("2020-12-31")
+StockMonthlyReturns <- c("XLC", "XLC", "XLP", "XLE","XLF", "XLV", "XLI","XLB", "XLK", "XLU", "XLY") %>%
+  tq_get(get = "stock.prices", 
+         from = start,
+         to = end) %>%
+  group_by(symbol) %>%
+  tq_transmute(select = adjusted,
+               mutate_fun = periodReturn,
+               period = "monthly",
+               col_rename = "StockMonthlyReturns")
+
+
+stockdata <- StockMonthlyReturns %>% group_by(symbol, Month = floor_date(date, "month")) %>% summarise(Amount = sum(StockMonthlyReturns))
+
+monthnum <- month(stockdata$Month)
+stockdata <- cbind(stockdata, monthnum)
+#stockdata$Month <- month(stockdata$Month)
+stockdata <- stockdata %>% rename(Month_Num = ...4)
+#stockdata$Month <- as.factor((stockdata$Month))
+stockdata$Month_Num <- month.abb[stockdata$Month_Num]
+#stockdata$Month <- as.factor(stockdata$Month)
+stockdata <- stockdata %>% 
+  select(-Month)
+stockdata <-  stockdata %>% rename(Month = "Month_Num")
+#stockdata$Month <- months(as.Date(stockdata$Month))
+stockdata <- adorn_rounding(stockdata, digits= 4) # Rounding Returns 
+#stockdata$Amount <- percent(stockdata$Amount, accuracy = 0.01) # Changing Decimals to Percent but changes data type to character
+
+
+#topholdings <- tq_get(c("CVX", "XOM", 
+                        #"NEE", "DUK","JNJ", "UNH"), 
+                        #from = start, to = end)
+
+#percentreturns <- tq_get(c("CVX", "XOM", 
+                        #"NEE", "DUK","JNJ", "UNH"), 
+                        #from = start, to = end)%>%
+ # group_by(symbol) %>%
+  #tq_transmute(select = adjusted,
+              # mutate_fun = periodReturn, period = "monthly",
+               #col_rename = "Change")
+
+```
+The report assesses the year-to-date (YTD) performance of the Market via a family of ten exchange-traded funds (ETF). The following report identifies the monthly percent (%) gain/loss of the ETF, assesses the correlation between the ETFs, and provides a discourse of the market.
+
+
+# ETF Performance
+The uncertainty and conviction of the market was at an all-time high in 2020; volatility surged and it created intriguing month-to-month fluctuations. The table below identifies the monthly return of ten Spyder (SPDR) ETFs and highlights the upheaval that occurred in March and the hasty recovery in the successive months. 
+
+```{r fig.align= 'center', fig.width = 7, fig.height= 7}
+stockdata <- stockdata %>% 
+  mutate(Month = factor(Month, month.abb)) %>%
+  tidyr::spread(key=symbol, value = Amount)
+  #tidyr:: pivot_wider(names_from = symbol, values_from = Amount) 
+  
+  
+stockdata %>% 
+  gt(rowname_col = "Month") %>%
+  cols_align(align = "center", 
+             columns = vars(XLB,XLC,XLE,XLF,XLI,XLK,XLP,XLU,XLV, XLY)) %>%
+  tab_header(title = "Monthly Return of SPDR ETF's") %>%
+  opt_align_table_header(align = c("center"))%>%
+  cols_label(
+    XLB = gt::html("<span title ='Materials Select Sector Index'>XLB</span>"),
+    XLC = gt::html("<span title ='Communication Services Select Sector Index'>XLC</span>"),
+    XLE = gt::html("<span title ='Energy Select Sector Index'>XLE</span>"),
+    XLF = gt::html("<span title ='Financial Select Sector Index'>XLF</span>"),
+    XLI = gt::html("<span title ='Industrial Select Sector Index'>XLI</span>"),
+    XLK = gt::html("<span title ='Technology Select Sector Index'>XLK</span>"),
+    XLP = gt::html("<span title ='Consumer Staples Select Sector Index'>XLP</span>"),
+    XLU = gt::html("<span title ='Utilities Index'>XLU</span>"),
+    XLY = gt::html("<span title = 'Consumer Discretionary Select Sector Index'>XLY</span>"),
+    XLV = gt::html("<span title ='Health Care Index'>XLV</span>")) %>%
+  fmt_percent(columns = vars(XLB,XLC,XLE,XLF,XLI,XLK,XLP,XLU,XLV, XLY), decimals =2)%>%
+  tab_options(
+    container.width = px(735),
+    column_labels.font.size = "smaller",
+    table.font.size = "smallest",
+    table.font.color = "black",
+    data_row.padding = px(10)
+  ) %>%
+  data_color(
+    columns = vars(XLB,XLC,XLE,XLF,XLI,XLK,XLP,XLU,XLV,XLY),
+    colors = scales::col_numeric(
+      palette = as.character(paletteer_d("rcartocolor::Geyser", direction = -1, n = 8, type = c("continuous"))), domain = NULL
+    ), autocolor_text = FALSE) %>%
+     summary_rows(
+       groups = NULL,
+       columns = vars(XLB,XLC,XLE,XLF,XLI,XLK,XLP,XLU,XLV,XLY),
+       fns = list(Total = ~sum(.)),
+       formatter = fmt_percent,
+       use_seps = F
+       )
+
+  #stockdata %>% gt(rowname_col = "Month") %>%
+  #tab_header(title = "Monthly Return of SPDR ETF's") %>%
+  #tab_options(
+    #column_labels.font.size = "smaller",
+    #table.font.size = "smaller",
+    #data_row.padding = px(10)
+  #)
+# Comments: Should add conditional formatting and hover on ETF names
+```
+The total year-over-year (YoY) percent gain for all, but one of the ETFs, was surprisingly positive. XLK (Tech), XLY(Consumer Discretionary), and XLC (Communication Services) were the % YoY leaders, while XLE and XLF were the losers. 
+
+# ETF Correlation
+We identified the degree to which funds are correlated. In a year where unemployment skyrocketed, an oil crisis occured, and an election loomed, there were many catalysts that shifted and transformed the mindset of investors and the market. New relationships between sectors were discovered and existing relationships were strengthened. The correlation plot below depicts the correlation coefficients of ten SPDR ETFs in 2020. 
+
+```{r fig.align= 'center', fig.width = 7, fig.height= 7}
+
+funddata <- StockMonthlyReturns
+
+funddata <- funddata %>% pivot_wider(names_from = symbol, values_from = StockMonthlyReturns)
+
+funddata <- funddata %>% select(-date)
+
+#funddata %>% correlate() %>% network_plot(min_cor = 0.5)
+
+#corrplot.mixed(cor(funddata), order = "hclust", tl.col = "black")
+ggcorrplot(cor(funddata), hc.order = TRUE, outline.color = "white", ggtheme = ggplot2::theme_minimal ,colors = c("#E46726", "white", "#6D9EC1"), type = 'lower', lab = TRUE)
+```
+We observed that Financials and Industrials had the highest correlation, while Utilities and Technology and Energy and Utilities had the lowest correlations. XLE's relationship with each of the other ETFs is interesting. Prior to 2020, XLE had been trading within a range. XLE's five year performance (as of January 1, 2021) had been a net loss of 37%. However, it's performance over the last year was a net loss of 36%; XLE did not have a great year.  
+
+# Market Analysis
+ETFs aim to track specific industry sectors, XLK tracks the Tech sector, while XLF tracks the Financial sector. To get a better sense of the leading sectors in 2020, we were curious if trends played any part in the success of the top-gaining sectors and companies within these sectors. We pinpointed trends that broke out and developed momentum in 2020 and found the following:
+
+* PC Gaming
+* D-I-Y and Gardening
+* Health and Sustainability
+* Working from Home (WFH)
+
+The trends observed had many qualities in common, the trends were more centered around the individual, than the collective. Additionally, the trends had sector/stock counterparts. Tech, consumer discretionary, and communication services companies embodied the characteristics of the trends. In parallel, they stood to gain. Some of the companies that benefited in 2020 included: 
+
+* Tech (XLK): Adobe, Nvidia, Paypal
+* Consumer Discretionary (XLY): Amazon, Home Depot, and Target
+* Communication Services (XLC): Facebook, Alphabet, Netflix
+
+The companies listed, on top of being positioned well, had products and services that tailored well to a pandemic-filled world. From touch-less payment software, to home improvement, to over-the top streaming content. They were innovative; they were adaptive. Trends that budded in 2020 may have helped to assist these sectors notoriety in some way, but many of the companies increased their relevancy and made inroads by offering products and services that consumers needed and wanted. 
+
+
+# Conclusion
+From it being an election year and the breakout of a pandemic, 2020 had many catalysts that shifted the outlook for the consumers, the economy and the stock market. The report showcases the bullish run of the technology sector and the lackluster performance of the energy sector (partly due to increasing concerns of climate change and expectation of a new "greener" president). With a vaccine being available (and in distribution across many states), and a new president being sworn in, we expect the market to cool off post-February. Stock prices and market indexes have risen to all-time highs and we believe the market has been fueled by ever-increasing euphoria, positive vaccine news, and new-found stimulus checks.
